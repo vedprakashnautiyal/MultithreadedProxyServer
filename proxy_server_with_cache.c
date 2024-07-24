@@ -39,7 +39,7 @@ void remove_cache_element();
 int port_number = 8080;     // Default Port
 int proxy_socketId;         // socket descriptor of proxy server
 pthread_t tid[MAX_CLIENTS]; // array to store the thread ids of clients
-sem_t seamaphore;           // if client requests exceeds the max_clients this seamaphore puts the
+sem_t semaphore;           // if client requests exceeds the max_clients this semaphore puts the
                   // waiting threads to sleep and wakes them when traffic on queue decreases
 // sem_t cache_lock;
 pthread_mutex_t lock; // lock is used for locking the cache
@@ -241,9 +241,9 @@ int checkHTTPversion(char *msg)
 
 void *thread_fn(void *socketNew)
 {
-    sem_wait(&seamaphore);
+    sem_wait(&semaphore);
     int p;
-    sem_getvalue(&seamaphore, &p);
+    sem_getvalue(&semaphore, &p);
     printf("semaphore value:%d\n", p);
     int *t = (int *)(socketNew);
     int socket = *t;            // Socket is socket descriptor of the connected Client
@@ -301,7 +301,7 @@ void *thread_fn(void *socketNew)
         printf("Data retrived from the Cache\n\n");
         printf("%s\n\n", response);
         // close(socketNew);
-        // sem_post(&seamaphore);
+        // sem_post(&semaphore);
         // return NULL;
     }
 
@@ -355,9 +355,9 @@ void *thread_fn(void *socketNew)
     shutdown(socket, SHUT_RDWR);
     close(socket);
     free(buffer);
-    sem_post(&seamaphore);
+    sem_post(&semaphore);
 
-    sem_getvalue(&seamaphore, &p);
+    sem_getvalue(&semaphore, &p);
     printf("Semaphore post value:%d\n", p);
     free(tempReq);
     return NULL;
@@ -369,7 +369,7 @@ int main(int argc, char *argv[])
     int client_socketId, client_len;             // client_socketId == to store the client socket id
     struct sockaddr_in server_addr, client_addr; // Address of client and server to be assigned
 
-    sem_init(&seamaphore, 0, MAX_CLIENTS); // Initializing seamaphore and lock
+    sem_init(&semaphore, 0, MAX_CLIENTS); // Initializing semaphore and lock
     pthread_mutex_init(&lock, NULL);       // Initializing lock for cache
 
     if (argc == 2) // checking whether two arguments are received or not
@@ -439,13 +439,11 @@ int main(int argc, char *argv[])
         else
         {
             Connected_socketId[i] = client_socketId; // Storing accepted client into array
-        }
-
-        // Getting IP address and port number of client
+        } // Getting IP address and port number of client
         struct sockaddr_in *client_pt = (struct sockaddr_in *)&client_addr;
         struct in_addr ip_addr = client_pt->sin_addr;
         char str[INET_ADDRSTRLEN]; // INET_ADDRSTRLEN: Default ip address size
-        inet_ntop(AF_INET, &ip_addr, str, INET_ADDRSTRLEN);
+        inet_ntop(AF_INET, &ip_addr, str, INET_ADDRSTRLEN); //converting address to binary format
         printf("Client is connected with port number: %d and ip address: %s \n", ntohs(client_addr.sin_port), str);
         // printf("Socket values of index %d in main function is %d\n",i, client_socketId);
         pthread_create(&tid[i], NULL, thread_fn, (void *)&Connected_socketId[i]); // Creating a thread for each client accepted
