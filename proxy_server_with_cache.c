@@ -33,6 +33,7 @@ struct cache_element
 };
 
 cache_element *find(char *url);
+
 int add_cache_element(char *data, int size, char *url);
 void remove_cache_element();
 
@@ -114,7 +115,7 @@ int connectRemoteServer(char *host_addr, int port_num)
 
     // Get host by the name or ip address provided
 
-    struct hostent *host = gethostbyname(host_addr);
+    struct hostent *host = gethostbyname(host_addr); //local host address of my system
     if (host == NULL)
     {
         fprintf(stderr, "No such host exists.\n");
@@ -196,7 +197,6 @@ int handle_request(int clientSocket, ParsedRequest *request, char *tempReq)
         for (int i = 0; i < bytes_send / sizeof(char); i++)
         {
             temp_buffer[temp_buffer_index] = buf[i];
-            // printf("%c",buf[i]); // Response Printing
             temp_buffer_index++;
         }
         temp_buffer_size += MAX_BYTES;
@@ -240,37 +240,35 @@ int checkHTTPversion(char *msg)
 }
 
 void *thread_fn(void *socketNew)
-{
-    sem_wait(&semaphore);
+{   
+    //if sem is -1 we wait
+    sem_wait(&semaphore); //tid is added but do we have scopt to run any more thread
     int p;
     sem_getvalue(&semaphore, &p);
     printf("semaphore value:%d\n", p);
-    int *t = (int *)(socketNew);
+    int *t = (int *)(socketNew); //universal socket
     int socket = *t;            // Socket is socket descriptor of the connected Client
-    int bytes_send_client, len; // Bytes Transferred
+    int bytes_send_client, len; // Bytes Transferred from client after connection is established in main()
 
-    char *buffer = (char *)calloc(MAX_BYTES, sizeof(char)); // Creating buffer of 4kb for a client
+    char *buffer = (char *)calloc(MAX_BYTES, sizeof(char)); // Creating buffer of 4kb for a client request
 
-    bzero(buffer, MAX_BYTES);                               // Making buffer zero
-    bytes_send_client = recv(socket, buffer, MAX_BYTES, 0); // Receiving the Request of client by proxy server
+    bzero(buffer, MAX_BYTES);                               // Making buffer zero by removing garbage value
+    bytes_send_client = recv(socket, buffer, MAX_BYTES, 0); // Receiving the Request of client by proxy server (into socket)
 
-    while (bytes_send_client > 0)
+    while (bytes_send_client > 0) //while we are getting http request from client
     {
         len = strlen(buffer);
-        // loop until u find "\r\n\r\n" in the buffer
-        if (strstr(buffer, "\r\n\r\n") == NULL)
+        // loop until u find "\r\n\r\n" in the buffer which is end of a request
+        if (strstr(buffer, "\r\n\r\n") == NULL) //each line in HTTP including request line and each header ends with \r\n (carriage return and line feed) 
+                                                //and additional \r\n is used to indicate the end of the header section and beginning of the body.
         {
-            bytes_send_client = recv(socket, buffer + len, MAX_BYTES - len, 0);
+            bytes_send_client = recv(socket, buffer + len, MAX_BYTES - len, 0);//0 is the default protocol
         }
         else
         {
             break;
         }
     }
-
-    // printf("--------------------------------------------\n");
-    // printf("%s\n",buffer);
-    // printf("----------------------%d----------------------\n",strlen(buffer));
 
     char *tempReq = (char *)malloc(strlen(buffer) * sizeof(char) + 1);
     // tempReq, buffer both store the http request sent by client
@@ -298,11 +296,8 @@ void *thread_fn(void *socketNew)
             }
             send(socket, response, MAX_BYTES, 0);
         }
-        printf("Data retrived from the Cache\n\n");
+        printf("Data retrieved from the Cache\n\n");
         printf("%s\n\n", response);
-        // close(socketNew);
-        // sem_post(&semaphore);
-        // return NULL;
     }
 
     else if (bytes_send_client > 0)
@@ -320,10 +315,11 @@ void *thread_fn(void *socketNew)
         else
         {
             bzero(buffer, MAX_BYTES);
-            if (!strcmp(request->method, "GET"))
+            if (!strcmp(request->method, "GET")) // The project can be further improved to handled other request methods like POST,
+                                                //GET is easier to implement as we only have to deal with header
             {
 
-                if (request->host && request->path && (checkHTTPversion(request->version) == 1))
+                if (request->host && request->path && (checkHTTPversion(request->version) == 1)) //Support only HTTP 1.0 Version
                 {
                     bytes_send_client = handle_request(socket, request, tempReq); // Handle GET request
                     if (bytes_send_client == -1)
@@ -398,11 +394,11 @@ int main(int argc, char *argv[])
         perror("setsockopt(SO_REUSEADDR) failed\n");
 
     bzero((char *)&server_addr, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port_number); // Assigning port to the Proxy
-    server_addr.sin_addr.s_addr = INADDR_ANY;  // Any available adress assigned
+    server_addr.sin_family = AF_INET; //Init Server Family init
+    server_addr.sin_port = htons(port_number); // Assigning port to the Proxy, htons convert numbers to byte order which network can understand
+    server_addr.sin_addr.s_addr = INADDR_ANY;  // Any available address assigned to the server to which we are gonna communicate
 
-    // Binding the socket
+    // Binding the socket (We can accept and receive only when socket is bind)
     if (bind(proxy_socketId, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
     {
         perror("Port is not free\n");
@@ -420,17 +416,17 @@ int main(int argc, char *argv[])
     }
 
     int i = 0;                           // Iterator for thread_id (tid) and Accepted Client_Socket for each thread
-    int Connected_socketId[MAX_CLIENTS]; // This array stores socket descriptors of connected clients
+    int Connected_socketId[MAX_CLIENTS]; // This array stores socket descriptors of all connected clients
 
-    // Infinite Loop for accepting connections
+    // Infinite Loop for accepting client connections
     while (1)
     {
 
-        bzero((char *)&client_addr, sizeof(client_addr)); // Clears struct client_addr
+        bzero((char *)&client_addr, sizeof(client_addr)); // Clears struct client_addr and assign it to 0.
         client_len = sizeof(client_addr);
 
-        // Accepting the connections
-        client_socketId = accept(proxy_socketId, (struct sockaddr *)&client_addr, (socklen_t *)&client_len); // Accepts connection
+        // Accepting the connections (Opening Sockets)
+        client_socketId = accept(proxy_socketId, (struct sockaddr *)&client_addr, (socklen_t *)&client_len); // Accepts connection from client socket to proxy socket
         if (client_socketId < 0)
         {
             fprintf(stderr, "Error in Accepting connection !\n");
@@ -438,14 +434,14 @@ int main(int argc, char *argv[])
         }
         else
         {
-            Connected_socketId[i] = client_socketId; // Storing accepted client into array
+            Connected_socketId[i] = client_socketId; // Storing accepted client into array containing client descriptors
         } // Getting IP address and port number of client
-        struct sockaddr_in *client_pt = (struct sockaddr_in *)&client_addr;
-        struct in_addr ip_addr = client_pt->sin_addr;
+
+        struct sockaddr_in *client_pt = (struct sockaddr_in *)&client_addr; //ptr to client address (Copy)
+        struct in_addr ip_addr = client_pt->sin_addr; //take out client address
         char str[INET_ADDRSTRLEN]; // INET_ADDRSTRLEN: Default ip address size
         inet_ntop(AF_INET, &ip_addr, str, INET_ADDRSTRLEN); //converting address to binary format
-        printf("Client is connected with port number: %d and ip address: %s \n", ntohs(client_addr.sin_port), str);
-        // printf("Socket values of index %d in main function is %d\n",i, client_socketId);
+        printf("Client is connected with port number: %d and ip address: %s \n", ntohs(client_addr.sin_port), str); //client connecting established
         pthread_create(&tid[i], NULL, thread_fn, (void *)&Connected_socketId[i]); // Creating a thread for each client accepted
         i++;
     }
@@ -455,11 +451,9 @@ int main(int argc, char *argv[])
 
 cache_element *find(char *url)
 {
-
     // Checks for url in the cache if found returns pointer to the respective cache element or else returns NULL
     cache_element *site = NULL;
-    // sem_wait(&cache_lock);
-    int temp_lock_val = pthread_mutex_lock(&lock);
+    int temp_lock_val = pthread_mutex_lock(&lock); //this brings lock if available
     printf("Remove Cache Lock Acquired %d\n", temp_lock_val);
     if (head != NULL)
     {
